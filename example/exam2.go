@@ -40,9 +40,9 @@ func main() {
 
 	etcdaero.StartAeroReader(keyETCD, storage.NewlocalStorage())
 
-	et.SetTTL(1 * time.Second)
+	et.SetTTL(4 * time.Second)
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(25 * time.Second)
 
 	obj, find := etcdaero.GetAero(keyETCD, "ru")
 
