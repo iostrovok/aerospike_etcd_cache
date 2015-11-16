@@ -69,7 +69,7 @@ func New(key string, cfg *Config, f LoadFunc, faces ...interface{}) (*EtcdAero, 
 		return nil, err
 	}
 
-	ea._initCaching(f, faces)
+	ea._initCaching(f, faces...)
 
 	return ea, err
 }
