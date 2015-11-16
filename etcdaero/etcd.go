@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"hash/crc32"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/coreos/etcd/client"
 )
 
 type LoadFunc func([]interface{}) (map[string]interface{}, error)
@@ -28,18 +28,20 @@ type Config struct {
 const defTimerTTL = 17 * 61 * time.Second
 
 type EtcdAero struct {
-	etcdLockTTL uint64
+	etcdLockTTL time.Duration
 	timerTTL    time.Duration
 	sleepTTL    time.Duration
 	AeroTTL     time.Duration
-	client      *etcd.Client
+	client      client.Client
+	clientKey   client.KeysAPI
 	cfg         *Config
 	key         string
 	value       string
 	stopC       chan os.Signal
 	delta       float64
 	//Aero        *AeroSpikeClient
-	Aero *AeroChecker
+	Aero      *AeroChecker
+	prevIndex uint64
 }
 
 // New - creates new object
@@ -79,8 +81,8 @@ func New(key string, cfg *Config, f LoadFunc, faces ...interface{}) (*EtcdAero, 
 func (ea *EtcdAero) SetTTL(timerTTL time.Duration) {
 
 	ea.timerTTL = timerTTL
-	ea.etcdLockTTL = uint64(timerTTL * 3 / 2 / time.Second)
-	ea.AeroTTL = timerTTL * 10
+	ea.etcdLockTTL = timerTTL * 3 / 2
+	ea.AeroTTL = timerTTL * 5
 
 	// randomize sleep ttl form 0.8 to 1.2 of original timerTTL / 2
 	crc32q := crc32.MakeTable(0xD5828281)
@@ -95,12 +97,23 @@ func (ea *EtcdAero) Key(key string) {
 func (ea *EtcdAero) _init() error {
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Printf("Could not get hostname: %v", err)
 		return err
 	}
 
 	ea.value = fmt.Sprintf("%s%d", hostname, ea.cfg.EtcdPort)
-	ea.client = etcd.NewClient(ea.cfg.EtcdEndpoints)
+
+	initCfg := client.Config{
+		Endpoints: ea.cfg.EtcdEndpoints,
+		Transport: client.DefaultTransport,
+		// set timeout per request to fail fast when the target endpoint is unavailable
+		HeaderTimeoutPerRequest: 2 * time.Second,
+	}
+
+	ea.client, err = client.New(initCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ea.clientKey = client.NewKeysAPI(ea.client)
 
 	return nil
 }
@@ -121,29 +134,28 @@ func (ea *EtcdAero) _initCaching(f LoadFunc, faces ...interface{}) error {
 	CONFIG FUNCTION <<<<<<<<<<<<<<<<<<<<<
 */
 
-func (ea *EtcdAero) getLock() bool {
-	res, err := ea.client.RawCreate(ea.key, ea.value, ea.etcdLockTTL)
-	if err != nil {
-		log.Printf("Error while trying to get lock for Pages Caching: %v", err)
-		return false
+func (ea *EtcdAero) _updateResponse(resp *client.Response, err error) bool {
+	if err == nil {
+		ea.prevIndex = resp.Index
+		return true
 	}
-	return res.StatusCode == http.StatusCreated
+	ea.prevIndex = 0
+	return false
 }
 
-func (ea *EtcdAero) releaseLock() {
-	_, err := ea.client.CompareAndDelete(ea.key, ea.value, 0)
-	if err != nil {
-		log.Printf("Error while releasing lock for Pages Caching: %v", err)
-	}
+func (ea *EtcdAero) getLock() bool {
+	resp, err := ea.clientKey.Set(context.Background(), ea.key, ea.value, _setOptions("", 0, ea.etcdLockTTL))
+	return ea._updateResponse(resp, err)
 }
 
 func (ea *EtcdAero) renewLock() bool {
-	_, err := ea.client.RawCompareAndSwap(ea.key, ea.value, ea.etcdLockTTL, ea.value, 0)
-	if err != nil {
-		log.Printf("Error while trying to renew lock for Pages Caching: %v", err)
-		return false
-	}
-	return true
+	resp, err := ea.clientKey.Set(context.Background(), ea.key, ea.value, _setOptions(ea.value, ea.prevIndex, ea.etcdLockTTL))
+	return ea._updateResponse(resp, err)
+}
+
+func (ea *EtcdAero) releaseLock() {
+	// Ignore any errors
+	ea.clientKey.Delete(context.Background(), ea.key, _deleteOptions(ea.value))
 }
 
 func (ea *EtcdAero) _make(f LoadFunc, faces ...interface{}) {
@@ -197,9 +209,41 @@ func (ea *EtcdAero) _putAero(data map[string]interface{}) error {
 		Pk:  ea.key,
 	}
 
-	//ea.Aero.PutEntry(cacheKey, pass, ea.AeroTTL)
 	ea.Aero.Put(cacheKey, pass, ea.AeroTTL)
 	ea.Aero.ReLoad()
 
 	return nil
+}
+
+func _setOptions(prevVal string, prevIndex uint64, ttl time.Duration) *client.SetOptions {
+
+	out := &client.SetOptions{
+		TTL:       ttl,
+		Dir:       false,
+		PrevExist: client.PrevNoExist,
+	}
+
+	if prevVal != "" {
+		out.PrevValue = prevVal
+		out.PrevExist = client.PrevExist
+	}
+
+	if prevIndex > 0 {
+		out.PrevIndex = prevIndex
+		out.PrevExist = client.PrevExist
+	}
+
+	return out
+}
+
+func _deleteOptions(prevVal string) *client.DeleteOptions {
+	out := &client.DeleteOptions{
+		Recursive: true,
+		Dir:       false,
+	}
+	if prevVal != "" {
+		out.PrevValue = prevVal
+	}
+
+	return out
 }
