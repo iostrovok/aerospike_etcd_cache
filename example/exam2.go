@@ -3,6 +3,7 @@ package main
 import (
 	"etcdaero"
 	"fmt"
+	"log"
 	"storage"
 	"time"
 )
@@ -19,24 +20,23 @@ var cfgETCD *etcdaero.Config = &etcdaero.Config{
 var keyETCD string = "my_simple_key_etcd"
 
 func _myFucnGetDataForCache(params []interface{}) (map[string]interface{}, error) {
-	if len(params) != 1 { // params[0] => "eeee"
-		return nil, fmt.Errorf("LoadCategoriesFromMysqlToAeroSpike: Bad input len(params) != 4.\n")
+	if len(params) != 3 { //
+		return nil, fmt.Errorf("LoadCategoriesFromMysqlToAeroSpike: Bad input len(params) != 3.\n")
 	}
 	return map[string]interface{}{
-		"1": "Super for 1!",
-		"2": "Super for 2!",
-		"3": "Super for 3!",
+		"1": params[0],
+		"2": params[1],
+		"3": params[2],
 	}, nil
 }
 
 func main() {
 
 	fmt.Println("Start")
-	et, err := etcdaero.New(keyETCD, cfgETCD, _myFucnGetDataForCache, "eeee")
-
-	fmt.Printf("et: %T\n", et)
-	fmt.Printf("err: %s\n", err)
-	fmt.Printf("et: %+v\n", et)
+	et, err := etcdaero.New(keyETCD, cfgETCD, _myFucnGetDataForCache, "Winnie", "Pooh", "Honey")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	etcdaero.StartAeroReader(keyETCD, storage.NewlocalStorage())
 
@@ -44,12 +44,7 @@ func main() {
 
 	time.Sleep(25 * time.Second)
 
-	obj, find := etcdaero.GetAero(keyETCD, "ru")
-
-	fmt.Printf("find: %t\n", find)
-	fmt.Printf("obj: %T\n", obj)
-	fmt.Printf("obj: %+v\n", obj)
-
-	fmt.Println("Finish")
-
+	key := "ru"
+	obj, find := etcdaero.GetAero(keyETCD, key)
+	fmt.Printf("result from aerospike. FIND: %t, Data for key %s: %+v\n", find, key, obj)
 }

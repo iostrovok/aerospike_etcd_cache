@@ -3,8 +3,28 @@ package main
 import (
 	"etcdaero"
 	"fmt"
+	"log"
 	"time"
 )
+
+/*
+	Gets data from source (ex - database request) and prepare for aerospake storing.
+	Function type is "type LoadFunc func([]interface{}) (map[string]interface{}, error)"
+	We can pass db connection and other date with "params []interface{}".
+*/
+func _myFucnGetDataForCache(params []interface{}) (map[string]interface{}, error) {
+	if len(params) != 2 {
+		// params[0] => "my-add-param"
+		// params[1] => "my-add-param-too"
+		return nil, fmt.Errorf("LoadCategoriesFromMysqlToAeroSpike: Bad input len(params) != 2.\n")
+	}
+	// Our complex data...
+	return map[string]interface{}{
+		"1": "Winnie - 1!",
+		"2": "Pooh - 2!",
+		"3": "Honey - 3!",
+	}, nil
+}
 
 var cfgETCD *etcdaero.Config = &etcdaero.Config{
 	AeroNamespace: "content_api",
@@ -15,36 +35,39 @@ var cfgETCD *etcdaero.Config = &etcdaero.Config{
 	EtcdEndpoints: []string{"http://127.0.0.1:4001"},
 }
 
-var keyETCD string = "my_simple_key_etcd"
-
-func _myFucnGetDataForCache(params []interface{}) (map[string]interface{}, error) {
-	if len(params) != 1 {
-		return nil, fmt.Errorf("LoadCategoriesFromMysqlToAeroSpike: Bad input len(params) != 4.\n")
-	}
-	return map[string]interface{}{"string": "Super!"}, nil
-}
+var keyETCD string = "my_simple_key_etcd_aero"
 
 func main() {
 
-	fmt.Println("Start")
-	et, err := etcdaero.New(keyETCD, cfgETCD, _myFucnGetDataForCache, "eeee")
+	// keyETCD, cfgETCD, _myFucnGetDataForCache are required
+	fmt.Printf("Start etcdaero.New\n")
+	et, err := etcdaero.New(keyETCD, cfgETCD, _myFucnGetDataForCache, "my-add-param", "my-add-param-too")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	fmt.Printf("et: %T\n", et)
-	fmt.Printf("err: %s\n", err)
-	fmt.Printf("et: %+v\n", et)
-
+	/*
+		Starts aerospike reader.
+		Default result is map[string]interface{}.
+		If we need a post-processing after aerospike we
+		have to use etcdaero.StartAeroReader( keyETCD, etcdaero.IAeroBody ).
+		See example/exam2.go & example/src/storage/storage.go for more details.
+	*/
+	fmt.Printf("Starts aerospike reader.\n")
 	etcdaero.StartAeroReader(keyETCD)
 
-	et.SetTTL(1 * time.Second)
+	// just for test
+	et.SetTTL(4 * time.Second)
 
-	time.Sleep(5 * time.Second)
+	// here we're making something
+	time.Sleep(25 * time.Second)
 
+	/*
+		Get data from local cache.
+		If we use etcdaero.IAeroBody we can get data with params
+		ex: etcdaero.GetAero(keyETCD, "key")
+		See example/exam2.go & example/src/storage/storage.go for more details.
+	*/
 	obj, find := etcdaero.GetAero(keyETCD)
-
-	fmt.Printf("find: %t\n", find)
-	fmt.Printf("obj: %T\n", obj)
-	fmt.Printf("obj: %+v\n", obj)
-
-	fmt.Println("Finish")
-
+	fmt.Printf("result from aerospike. FIND: %t, Data: %+v\n", find, obj)
 }
