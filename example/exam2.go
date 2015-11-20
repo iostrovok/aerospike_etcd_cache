@@ -19,9 +19,9 @@ var cfgETCD *etcdaero.Config = &etcdaero.Config{
 
 var keyETCD string = "my_simple_key_etcd"
 
-func _myFucnGetDataForCache(params []interface{}) (map[string]interface{}, error) {
+func _myFuncGetDataForCache(params []interface{}) (map[string]interface{}, error) {
 	if len(params) != 3 { //
-		return nil, fmt.Errorf("LoadCategoriesFromMysqlToAeroSpike: Bad input len(params) != 3.\n")
+		return nil, fmt.Errorf("_myFuncGetDataForCache: Bad input len(params) != 3.\n")
 	}
 	return map[string]interface{}{
 		"1": params[0],
@@ -33,7 +33,7 @@ func _myFucnGetDataForCache(params []interface{}) (map[string]interface{}, error
 func main() {
 
 	fmt.Println("Start")
-	et, err := etcdaero.New(keyETCD, cfgETCD, _myFucnGetDataForCache, "Winnie", "Pooh", "Honey")
+	et, err := etcdaero.New(keyETCD, cfgETCD, _myFuncGetDataForCache, "Winnie", "Pooh", "Honey")
 	if err != nil {
 		log.Fatal(err)
 	}

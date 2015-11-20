@@ -32,11 +32,11 @@ import (
 	Function type is "type LoadFunc func([]interface{}) (map[string]interface{}, error)"
 	We can pass db connection and other date with "params []interface{}".
 */
-func _myFucnGetDataForCache(params []interface{}) (map[string]interface{}, error) {
+func _myFuncGetDataForCache(params []interface{}) (map[string]interface{}, error) {
 	if len(params) != 2 {
 		// params[0] => "my-add-param"
 		// params[1] => "my-add-param-too"
-		return nil, fmt.Errorf("LoadCategoriesFromMysqlToAeroSpike: Bad input len(params) != 2.\n")
+		return nil, fmt.Errorf("_myFuncGetDataForCache: Bad input len(params) != 2.\n")
 	}
 	// Our complex data...
 	return map[string]interface{}{
@@ -59,9 +59,9 @@ var keyETCD string = "my_simple_key_etcd_aero"
 
 func main() {
 
-	// keyETCD, cfgETCD, _myFucnGetDataForCache are required
+	// keyETCD, cfgETCD, _myFuncGetDataForCache are required
 	fmt.Printf("Start etcdaero.New\n")
-	et, err := etcdaero.New(keyETCD, cfgETCD, _myFucnGetDataForCache, "my-add-param", "my-add-param-too")
+	et, err := etcdaero.New(keyETCD, cfgETCD, _myFuncGetDataForCache, "my-add-param", "my-add-param-too")
 	if err != nil {
 		log.Fatal(err)
 	}
